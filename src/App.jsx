@@ -111,7 +111,7 @@ const CafeteriaSimulator = () => {
             </h1>
           </div>
           <p className="text-gray-600 text-lg">
-            Cafetería Universitaria - Universidad Piloto de Colombia
+            Cafetería Universitaria 
           </p>
         </div>
 
