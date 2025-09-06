@@ -1,79 +1,224 @@
-import React, { useState } from 'react';
-import { Play, BarChart3, Clock, Users, Calculator, TrendingUp, Coffee, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState } from "react";
+import {
+  Play,
+  Calculator,
+  Coffee,
+  AlertCircle,
+  BarChart3,
+  Clock,
+  Users,
+  TrendingUp,
+  CheckCircle,
+  BanknoteIcon,
+} from "lucide-react";
 
-const CafeteriaSimulator = () => {
-  const [valoresLlegada, setValoresLlegada] = useState([0.8, 0.3, 0.6, 0.1, 0.9]);
-  const [valoresServicio, setValoresServicio] = useState([0.5, 0.7, 0.2, 0.9, 0.4]);
-  const [tiemposLlegada, setTiemposLlegada] = useState([1.5, 8.4, 3.5, 16.1, 0.7]);
+const ColasSimulador = () => {
+  // --- Configuración inicial ---
+  const [numClientes, setNumClientes] = useState(5);
+  const [media, setMedia] = useState(7); // para exponencial T = -media * ln(U)
+  const [rangoMin, setRangoMin] = useState(2);
+  const [rangoMax, setRangoMax] = useState(6);
+
+  // toggles para usar aleatorios
+  const [usarLlegadas, setUsarLlegadas] = useState(true);
+  const [usarServicios, setUsarServicios] = useState(true);
+
+  // valores por defecto para reproducir tu ejemplo
+  const defaultU1 = [0.8, 0.3, 0.6, 0.1, 0.9];
+  const defaultU2 = [0.5, 0.7, 0.2, 0.9, 0.4];
+
+  // arrays U1, U2 (se ajustan al número de clientes)
+  const [valoresLlegada, setValoresLlegada] = useState(
+    ajustarArray(defaultU1, 5, 0.5)
+  );
+  const [valoresServicio, setValoresServicio] = useState(
+    ajustarArray(defaultU2, 5, 0.5)
+  );
+
+  // Campos para simulación sin U1 / sin U2
+  const [intervaloFijoLlegada, setIntervaloFijoLlegada] = useState(media); // Δ
+  const [llegadaInicialFija, setLlegadaInicialFija] = useState(media); // primera llegada
+  const [tiempoServicioFijo, setTiempoServicioFijo] = useState(
+    (rangoMin + rangoMax) / 2
+  );
+
+  // Resultados y errores
   const [resultados, setResultados] = useState(null);
-  const [mostrarCalculos, setMostrarCalculos] = useState(false);
+  const [mostrarCalculos, setMostrarCalculos] = useState(true);
   const [paso, setPaso] = useState(0);
+  const [errores, setErrores] = useState([]);
 
-  const calcularTiempoExponencial = (valorAleatorio, media = 7) => {
-    return -media * Math.log(valorAleatorio);
+  // --- Helpers ---
+  function ajustarArray(arr, n, fill = 0.5) {
+    const copy = arr ? arr.slice(0, n) : [];
+    while (copy.length < n) copy.push(fill);
+    return copy;
+  }
+
+  const generarValoresAleatorios = (n) =>
+    Array.from({ length: n }, () => Number(Math.random().toFixed(4)));
+
+  const calcularTiempoExponencial = (u, m) => {
+    // seguridad: u en (0,1)
+    const uu = Math.min(Math.max(u, 1e-12), 0.9999999999);
+    return -m * Math.log(uu);
   };
 
-  const calcularTiempoUniforme = (valorAleatorio, minTiempo = 2, maxTiempo = 6) => {
-    return minTiempo + (maxTiempo - minTiempo) * valorAleatorio;
-  };
+  const calcularTiempoUniforme = (u, a, b) => a + (b - a) * u;
 
-  const ejecutarSimulacion = () => {
-    setPaso(1);
-    
-    // Paso 1: Calcular tiempos entre llegadas
-    const tiemposEntreLlegadas = valoresLlegada.map(valor => 
-      calcularTiempoExponencial(valor, 7)
-    );
+  // Validación antes de ejecutar simulación
+  const validarEntradas = () => {
+    const errs = [];
+    const n = Math.max(1, parseInt(numClientes || 0, 10));
 
-    // Paso 2: Calcular tiempos de servicio
-    const tiemposServicio = valoresServicio.map(valor => 
-      calcularTiempoUniforme(valor, 2, 6)
-    );
-
-    // Paso 3: Simular sistema de colas
-    const datosClientes = [];
-    let tiempoFinServicioAnterior = 0;
-
-    for (let i = 0; i < 5; i++) {
-      const clienteNum = i + 1;
-      const tiempoLlegada = tiemposLlegada[i];
-      const tiempoServicio = tiemposServicio[i];
-      
-      const tiempoInicioServicio = Math.max(tiempoLlegada, tiempoFinServicioAnterior);
-      const tiempoFinServicio = tiempoInicioServicio + tiempoServicio;
-      const tiempoEspera = tiempoInicioServicio - tiempoLlegada;
-
-      datosClientes.push({
-        cliente: clienteNum,
-        llegada: Number(tiempoLlegada.toFixed(1)),
-        servicio: Number(tiempoServicio.toFixed(1)),
-        inicio: Number(tiempoInicioServicio.toFixed(1)),
-        fin: Number(tiempoFinServicio.toFixed(1)),
-        espera: Number(tiempoEspera.toFixed(1))
+    if (!Number.isInteger(n) || n < 1) errs.push("Número de clientes debe ser entero y ≥ 1.");
+    if (!(Number(media) > 0)) errs.push("Media (Exponencial) debe ser un número > 0.");
+    if (!(Number(rangoMax) > Number(rangoMin))) errs.push("Rango uniforme inválido: b debe ser mayor que a.");
+    if (Number(rangoMin) < 0) errs.push("Rango mínimo (a) no puede ser negativo.");
+    // validar llegadas
+    if (usarLlegadas) {
+      const U1 = ajustarArray(valoresLlegada, n, null);
+      U1.forEach((u, i) => {
+        if (u === null || u === undefined || isNaN(u)) errs.push(`U₁ cliente ${i + 1} está vacío.`);
+        else if (!(u > 0 && u < 1)) errs.push(`U₁ cliente ${i + 1} debe estar en (0,1).`);
       });
-
-      tiempoFinServicioAnterior = tiempoFinServicio;
+    } else {
+      if (!(Number(intervaloFijoLlegada) > 0))
+        errs.push("Intervalo fijo entre llegadas (Δ) debe ser > 0.");
+      if (isNaN(Number(llegadaInicialFija)) || Number(llegadaInicialFija) < 0)
+        errs.push("Llegada inicial fija debe ser ≥ 0.");
+    }
+    // validar servicios
+    if (usarServicios) {
+      const U2 = ajustarArray(valoresServicio, n, null);
+      U2.forEach((u, i) => {
+        if (u === null || u === undefined || isNaN(u)) errs.push(`U₂ cliente ${i + 1} está vacío.`);
+        else if (!(u > 0 && u < 1)) errs.push(`U₂ cliente ${i + 1} debe estar en (0,1).`);
+      });
+    } else {
+      if (!(Number(tiempoServicioFijo) > 0))
+        errs.push("Tiempo de servicio fijo debe ser > 0.");
     }
 
-    // Calcular métricas
-    const tiempoPromedioEspera = datosClientes.reduce((sum, cliente) => sum + cliente.espera, 0) / 5;
-    const tiempoTotalSimulacion = Math.max(...datosClientes.map(c => c.fin));
-    const tiempoTotalServicio = datosClientes.reduce((sum, cliente) => sum + cliente.servicio, 0);
-    const utilizacionServidor = (tiempoTotalServicio / tiempoTotalSimulacion) * 100;
-    const clientesSinEspera = datosClientes.filter(c => c.espera === 0).length;
-    const clientesConEspera = 5 - clientesSinEspera;
+    return errs;
+  };
+
+  // --- Ejecutar simulación ---
+  const ejecutarSimulacion = () => {
+    setPaso(1);
+    const n = Math.max(1, parseInt(numClientes || 0, 10));
+
+    // validar
+    const listaErrores = validarEntradas();
+    if (listaErrores.length > 0) {
+      setErrores(listaErrores);
+      window.alert("Errores:\n" + listaErrores.join("\n"));
+      return;
+    } else {
+      setErrores([]);
+    }
+
+    // preparar U1 y U2
+    const U1 = usarLlegadas ? ajustarArray(valoresLlegada, n, 0.5).map(Number) : null;
+    const U2 = usarServicios ? ajustarArray(valoresServicio, n, 0.5).map(Number) : null;
+
+    // 1) tiempos entre llegadas (no acumulados)
+    let tiemposEntreLlegadasRaw = [];
+    if (usarLlegadas) {
+      tiemposEntreLlegadasRaw = U1.map((u) => calcularTiempoExponencial(u, Number(media)));
+    } else {
+      // todos iguales al intervalo fijo Δ
+      tiemposEntreLlegadasRaw = Array(n).fill(Number(intervaloFijoLlegada));
+    }
+
+    // 2) llegadas acumuladas
+    const tiemposLlegadaAcumuladosRaw = [];
+    if (usarLlegadas) {
+      // usual: acumulado += T_i
+      let acumulado = 0;
+      for (let t of tiemposEntreLlegadasRaw) {
+        acumulado += t;
+        tiemposLlegadaAcumuladosRaw.push(acumulado);
+      }
+    } else {
+      // caso fijo: la primera llegada = llegadaInicialFija, y luego se suma el intervalo
+      let cur = Number(llegadaInicialFija);
+      tiemposLlegadaAcumuladosRaw.push(cur);
+      for (let i = 1; i < n; i++) {
+        cur = cur + Number(intervaloFijoLlegada);
+        tiemposLlegadaAcumuladosRaw.push(cur);
+      }
+    }
+
+    // 3) tiempos de servicio
+    let tiemposServicioRaw = [];
+    if (usarServicios) {
+      tiemposServicioRaw = U2.map((u) => calcularTiempoUniforme(u, Number(rangoMin), Number(rangoMax)));
+    } else {
+      tiemposServicioRaw = Array(n).fill(Number(tiempoServicioFijo));
+    }
+
+    // 4) simular colas FIFO (usar valores raw para cálculos)
+    const datosClientes = [];
+    let tiempoFinAnterior = 0;
+    for (let i = 0; i < n; i++) {
+      const llegadaRaw = tiemposLlegadaAcumuladosRaw[i];
+      const servicioRaw = tiemposServicioRaw[i];
+
+      const inicioRaw = Math.max(llegadaRaw, tiempoFinAnterior);
+      const finRaw = inicioRaw + servicioRaw;
+      const esperaRaw = Math.max(0, inicioRaw - llegadaRaw);
+
+      datosClientes.push({
+        cliente: i + 1,
+        u1: usarLlegadas ? U1[i] : null,
+        tEntreRaw: tiemposEntreLlegadasRaw[i],
+        llegadaRaw,
+        u2: usarServicios ? U2[i] : null,
+        servicioRaw,
+        inicioRaw,
+        finRaw,
+        esperaRaw,
+        // formateados para UI
+        tEntre: Number((tiemposEntreLlegadasRaw[i] || 0).toFixed(1)),
+        llegada: Number(llegadaRaw.toFixed(1)),
+        servicio: Number(servicioRaw.toFixed(1)),
+        inicio: Number(inicioRaw.toFixed(1)),
+        fin: Number(finRaw.toFixed(1)),
+        espera: Number(esperaRaw.toFixed(1)),
+      });
+
+      tiempoFinAnterior = finRaw;
+    }
+
+    // 5) métricas (usar raw)
+    const tiempoPromedioEsperaRaw =
+      datosClientes.reduce((s, c) => s + c.esperaRaw, 0) / datosClientes.length;
+    const tiempoTotalSimulacionRaw = Math.max(...datosClientes.map((c) => c.finRaw), 0);
+    const tiempoTotalServicioRaw = datosClientes.reduce((s, c) => s + c.servicioRaw, 0);
+    const utilizacionServidor =
+      tiempoTotalSimulacionRaw > 0 ? (tiempoTotalServicioRaw / tiempoTotalSimulacionRaw) * 100 : 0;
+    const clientesSinEspera = datosClientes.filter((c) => c.esperaRaw === 0).length;
 
     setResultados({
-      tiemposEntreLlegadas,
-      tiemposServicio,
+      U1: usarLlegadas ? U1.slice(0, n) : null,
+      U2: usarServicios ? U2.slice(0, n) : null,
+      tiemposEntreLlegadasRaw,
+      tiemposLlegadaAcumuladosRaw,
+      tiemposServicioRaw,
       datosClientes,
       metricas: {
-        tiempoPromedioEspera,
-        utilizacionServidor,
-        tiempoTotalSimulacion,
+        tiempoPromedioEsperaRaw,
+        tiempoPromedioEspera: Number(tiempoPromedioEsperaRaw.toFixed(2)),
+        tiempoTotalSimulacionRaw,
+        tiempoTotalSimulacion: Number(tiempoTotalSimulacionRaw.toFixed(2)),
+        tiempoTotalServicioRaw,
+        tiempoTotalServicio: Number(tiempoTotalServicioRaw.toFixed(2)),
+        utilizacionServidor: Number(utilizacionServidor.toFixed(0)),
         clientesSinEspera,
-        clientesConEspera
-      }
+        clientesConEspera: datosClientes.length - clientesSinEspera,
+        nClientes: datosClientes.length,
+      },
     });
 
     setPaso(2);
@@ -82,21 +227,30 @@ const CafeteriaSimulator = () => {
   const reiniciar = () => {
     setResultados(null);
     setPaso(0);
-    setMostrarCalculos(false);
+    setMostrarCalculos(true);
+    setErrores([]);
+    setValoresLlegada(ajustarArray(defaultU1, numClientes, 0.5));
+    setValoresServicio(ajustarArray(defaultU2, numClientes, 0.5));
+    setIntervaloFijoLlegada(media);
+    setLlegadaInicialFija(media);
+    setTiempoServicioFijo((rangoMin + rangoMax) / 2);
   };
 
   const getStatusColor = (espera) => {
-    if (espera === 0) return 'text-green-600 bg-green-50';
-    if (espera < 10) return 'text-yellow-600 bg-yellow-50';
-    return 'text-red-600 bg-red-50';
+    if (espera === 0) return "text-green-600 bg-green-50";
+    if (espera < 10) return "text-yellow-600 bg-yellow-50";
+    return "text-red-600 bg-red-50";
   };
 
-  const getUtilizacionColor = (utilizacion) => {
-    if (utilizacion > 80) return 'text-red-600';
-    if (utilizacion > 60) return 'text-yellow-600';
-    return 'text-green-600';
+  const getUtilizacionColor = (util) => {
+    if (util > 80) return "text-red-600";
+    if (util > 60) return "text-yellow-600";
+    return "text-green-600";
   };
 
+  
+
+  // --- Render ---
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -104,150 +258,263 @@ const CafeteriaSimulator = () => {
         <div className="text-center mb-8">
           <div className="flex justify-center items-center gap-3 mb-4">
             <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full">
-              <Coffee className="w-8 h-8 text-white" />
+              <BanknoteIcon className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Simulador de Sistema de Colas
+              Simulador General de Colas
             </h1>
           </div>
-          <p className="text-gray-600 text-lg">
-            Cafetería Universitaria 
-          </p>
+          <p className="text-gray-600 text-lg">Simulador configurable — llegadas y servicios</p>
         </div>
 
+        {/* CONFIG */}
         {paso === 0 && (
           <div className="grid lg:grid-cols-2 gap-8 mb-8">
-            {/* Panel de Configuración */}
+            {/* Panel configuración */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
               <div className="flex items-center gap-3 mb-6">
                 <Calculator className="w-6 h-6 text-blue-600" />
-                <h2 className="text-2xl font-bold text-gray-800">Configuración de Parámetros</h2>
+                <h2 className="text-2xl font-bold text-gray-800">Configuración</h2>
               </div>
-              
-              {/* Valores para Distribución Exponencial */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-700 mb-3">
-                  Valores Aleatorios - Tiempos entre Llegadas (U₁)
-                </h3>
-                <div className="grid grid-cols-5 gap-2">
-                  {valoresLlegada.map((valor, index) => (
-                    <div key={index} className="relative">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0.1"
-                        max="0.9"
-                        value={valor}
-                        onChange={(e) => {
-                          const nuevosValores = [...valoresLlegada];
-                          nuevosValores[index] = parseFloat(e.target.value);
-                          setValoresLlegada(nuevosValores);
-                        }}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center"
-                      />
-                      <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-500">
-                        C{index + 1}
-                      </label>
-                    </div>
-                  ))}
+
+              {/* Errores */}
+              {errores.length > 0 && (
+                <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-400 rounded">
+                  <strong className="text-red-700">Corrige lo siguiente:</strong>
+                  <ul className="text-red-600 mt-1 list-disc list-inside">
+                    {errores.map((e, i) => (
+                      <li key={i}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label className="block text-gray-700 font-semibold mb-2">Número de clientes</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={numClientes}
+                  onChange={(e) => {
+                    const n = Math.max(1, parseInt(e.target.value || "1", 10));
+                    setNumClientes(n);
+                    setValoresLlegada((old) => ajustarArray(old, n, 0.5));
+                    setValoresServicio((old) => ajustarArray(old, n, 0.5));
+                  }}
+                  className="w-full p-2 border rounded-lg"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Media (Exponencial)</label>
+                  <input
+                    type="number"
+                    min={0.0001}
+                    step="0.1"
+                    value={media}
+                    onChange={(e) => setMedia(Number(e.target.value))}
+                    className="w-full p-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Rango uniforme (a - b)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={rangoMin}
+                      onChange={(e) => setRangoMin(Number(e.target.value))}
+                      className="w-1/2 p-2 border rounded-lg"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={rangoMax}
+                      onChange={(e) => setRangoMax(Number(e.target.value))}
+                      className="w-1/2 p-2 border rounded-lg"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Valores para Distribución Uniforme */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-700 mb-3">
-                  Valores Aleatorios - Tiempos de Servicio (U₂)
-                </h3>
-                <div className="grid grid-cols-5 gap-2">
-                  {valoresServicio.map((valor, index) => (
-                    <div key={index} className="relative">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0.1"
-                        max="0.9"
-                        value={valor}
-                        onChange={(e) => {
-                          const nuevosValores = [...valoresServicio];
-                          nuevosValores[index] = parseFloat(e.target.value);
-                          setValoresServicio(nuevosValores);
-                        }}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center"
-                      />
-                      <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-500">
-                        C{index + 1}
-                      </label>
-                    </div>
-                  ))}
-                </div>
+              <div className="mb-4 flex gap-6">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={usarLlegadas}
+                    onChange={() => setUsarLlegadas((s) => !s)}
+                  />
+                  Usar U₁ (Llegadas)
+                </label>
+
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={usarServicios}
+                    onChange={() => setUsarServicios((s) => !s)}
+                  />
+                  Usar U₂ (Servicios)
+                </label>
               </div>
 
-              {/* Tiempos de Llegada */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-700 mb-3">
-                  Tiempos de Llegada (minutos)
-                </h3>
-                <div className="grid grid-cols-5 gap-2">
-                  {tiemposLlegada.map((tiempo, index) => (
-                    <div key={index} className="relative">
+              {/* Inputs U1 o tiempo fijo */}
+              {usarLlegadas ? (
+                <div className="mb-4">
+                  <h3 className="font-semibold text-gray-700 mb-2">Valores U₁ (tiempos entre llegadas)</h3>
+                  <div className="grid grid-cols-5 gap-2">
+                    {ajustarArray(valoresLlegada, numClientes, 0.5).map((v, i) => (
                       <input
+                        key={i}
                         type="number"
-                        step="0.1"
-                        min="0.1"
-                        value={tiempo}
+                        step="0.0001"
+                        min="0.0001"
+                        max="0.9999"
+                        value={v}
                         onChange={(e) => {
-                          const nuevosTiempos = [...tiemposLlegada];
-                          nuevosTiempos[index] = parseFloat(e.target.value);
-                          setTiemposLlegada(nuevosTiempos);
+                          const copia = ajustarArray(valoresLlegada, numClientes, 0.5);
+                          copia[i] = Number(e.target.value);
+                          setValoresLlegada(copia);
                         }}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center"
+                        className="p-2 border rounded-lg"
+                        title={`U1 cliente ${i + 1}`}
                       />
-                      <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-500">
-                        C{index + 1}
-                      </label>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <div className="mt-2 flex gap-3">
+                    <button
+                      onClick={() => setValoresLlegada(generarValoresAleatorios(numClientes))}
+                      className="text-sm text-blue-600 underline"
+                    >
+                      Generar aleatorios U₁
+                    </button>
+                    <button
+                      onClick={() => setValoresLlegada(ajustarArray(defaultU1, numClientes, 0.5))}
+                      className="text-sm text-gray-600 underline"
+                    >
+                      Restaurar ejemplo
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="mb-4 grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-2">Intervalo fijo Δ (min)</label>
+                    <input
+                      type="number"
+                      min="0.0001"
+                      step="0.1"
+                      value={intervaloFijoLlegada}
+                      onChange={(e) => setIntervaloFijoLlegada(Number(e.target.value))}
+                      className="w-full p-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-2">Llegada inicial (min)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={llegadaInicialFija}
+                      onChange={(e) => setLlegadaInicialFija(Number(e.target.value))}
+                      className="w-full p-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Inputs U2 o tiempo fijo servicio */}
+              {usarServicios ? (
+                <div className="mb-4">
+                  <h3 className="font-semibold text-gray-700 mb-2">Valores U₂ (servicio)</h3>
+                  <div className="grid grid-cols-5 gap-2">
+                    {ajustarArray(valoresServicio, numClientes, 0.5).map((v, i) => (
+                      <input
+                        key={i}
+                        type="number"
+                        step="0.0001"
+                        min="0.0001"
+                        max="0.9999"
+                        value={v}
+                        onChange={(e) => {
+                          const copia = ajustarArray(valoresServicio, numClientes, 0.5);
+                          copia[i] = Number(e.target.value);
+                          setValoresServicio(copia);
+                        }}
+                        className="p-2 border rounded-lg"
+                        title={`U2 cliente ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-2 flex gap-3">
+                    <button
+                      onClick={() => setValoresServicio(generarValoresAleatorios(numClientes))}
+                      className="text-sm text-purple-600 underline"
+                    >
+                      Generar aleatorios U₂
+                    </button>
+                    <button
+                      onClick={() => setValoresServicio(ajustarArray(defaultU2, numClientes, 0.5))}
+                      className="text-sm text-gray-600 underline"
+                    >
+                      Restaurar ejemplo
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <label className="block text-gray-700 font-semibold mb-2">Tiempo de servicio fijo (min)</label>
+                  <input
+                    type="number"
+                    min="0.0001"
+                    step="0.1"
+                    value={tiempoServicioFijo}
+                    onChange={(e) => setTiempoServicioFijo(Number(e.target.value))}
+                    className="w-full p-2 border rounded-lg"
+                  />
+                </div>
+              )}
 
               <button
                 onClick={ejecutarSimulacion}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2 shadow-lg"
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 transform hover:scale-105 transition-all duration-200"
               >
-                <Play className="w-5 h-5" />
+                <Play className="w-5 h-5 inline mr-2" />
                 Ejecutar Simulación
               </button>
             </div>
 
-            {/* Panel de Información */}
+            {/* Panel Información del sistema */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
               <div className="flex items-center gap-3 mb-6">
                 <AlertCircle className="w-6 h-6 text-purple-600" />
                 <h2 className="text-2xl font-bold text-gray-800">Información del Sistema</h2>
               </div>
-              
+
               <div className="space-y-4">
                 <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
                   <h4 className="font-semibold text-blue-800 mb-2">Distribución Exponencial</h4>
                   <p className="text-blue-700 text-sm">
-                    <strong>Fórmula:</strong> T = -7 × ln(U₁)<br/>
-                    <strong>Media:</strong> 7 minutos entre llegadas
+                    <strong>Fórmula:</strong> T = -media × ln(U₁) <br />
+                    <strong>Media:</strong> {media} minutos entre llegadas
                   </p>
                 </div>
-                
+
                 <div className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-500">
                   <h4 className="font-semibold text-purple-800 mb-2">Distribución Uniforme</h4>
                   <p className="text-purple-700 text-sm">
-                    <strong>Fórmula:</strong> S = 2 + (6-2) × U₂<br/>
-                    <strong>Rango:</strong> 2 a 6 minutos de servicio
+                    <strong>Fórmula:</strong> S = a + (b - a) × U₂ <br />
+                    <strong>Rango:</strong> {rangoMin} a {rangoMax} minutos de servicio
                   </p>
                 </div>
-                
+
                 <div className="bg-green-50 p-4 rounded-lg border-l-4 border-green-500">
                   <h4 className="font-semibold text-green-800 mb-2">Sistema de Colas</h4>
                   <p className="text-green-700 text-sm">
-                    <strong>Servidor:</strong> 1 barista<br/>
-                    <strong>Capacidad:</strong> Ilimitada<br/>
+                    <strong>Servidor:</strong> 1 (FIFO) <br />
+                    <strong>Capacidad:</strong> Ilimitada <br />
                     <strong>Disciplina:</strong> FIFO (Primero en llegar, primero en ser atendido)
                   </p>
                 </div>
@@ -256,9 +523,10 @@ const CafeteriaSimulator = () => {
           </div>
         )}
 
+        {/* RESULTADOS */}
         {resultados && (
           <div className="space-y-8">
-            {/* Cálculos Paso a Paso */}
+            {/* Cálculos paso a paso */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
@@ -266,70 +534,101 @@ const CafeteriaSimulator = () => {
                   <h2 className="text-2xl font-bold text-gray-800">Cálculos Paso a Paso</h2>
                 </div>
                 <button
-                  onClick={() => setMostrarCalculos(!mostrarCalculos)}
+                  onClick={() => setMostrarCalculos((s) => !s)}
                   className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
                 >
-                  {mostrarCalculos ? 'Ocultar' : 'Mostrar'} Cálculos
+                  {mostrarCalculos ? "Ocultar" : "Mostrar"} Cálculos
                 </button>
               </div>
 
               {mostrarCalculos && (
                 <div className="grid md:grid-cols-2 gap-6">
-                  {/* Paso 1 */}
+                  {/* Paso 1: tiempos entre llegadas */}
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <h3 className="font-bold text-blue-800 mb-3">PASO 1: Tiempos entre Llegadas</h3>
-                    <p className="text-sm text-blue-700 mb-2">Fórmula: T = -7 × ln(U₁)</p>
-                    {resultados.tiemposEntreLlegadas.map((tiempo, index) => (
-                      <div key={index} className="text-sm text-blue-600 mb-1">
-                        Cliente {index + 1}: T = -7 × ln({valoresLlegada[index]}) = {tiempo.toFixed(1)} min
-                      </div>
-                    ))}
+                    <p className="text-sm text-blue-700 mb-2">Fórmula: T = -{media} × ln(U₁)</p>
+                    {resultados.U1 ? (
+                      resultados.U1.map((u, i) => (
+                        <div key={i} className="text-sm text-blue-600 mb-1">
+                          Cliente {i + 1}: T = -{media} × ln({u}) ={" "}
+                          {Number(resultados.tiemposEntreLlegadasRaw[i].toFixed(1))} min → Llegada acumulada:{" "}
+                          {Number(resultados.tiemposLlegadaAcumuladosRaw[i].toFixed(1))} min
+                        </div>
+                      ))
+                    ) : (
+                      resultados.tiemposEntreLlegadasRaw.map((t, i) => (
+                        <div key={i} className="text-sm text-blue-600 mb-1">
+                          Cliente {i + 1}: T fijo = {Number(t.toFixed(1))} min → Llegada acumulada:{" "}
+                          {Number(resultados.tiemposLlegadaAcumuladosRaw[i].toFixed(1))} min
+                        </div>
+                      ))
+                    )}
                   </div>
 
-                  {/* Paso 2 */}
+                  {/* Paso 2: tiempos de servicio */}
                   <div className="bg-purple-50 p-4 rounded-lg">
                     <h3 className="font-bold text-purple-800 mb-3">PASO 2: Tiempos de Servicio</h3>
-                    <p className="text-sm text-purple-700 mb-2">Fórmula: S = 2 + (6-2) × U₂</p>
-                    {resultados.tiemposServicio.map((tiempo, index) => (
-                      <div key={index} className="text-sm text-purple-600 mb-1">
-                        Cliente {index + 1}: S = 2 + 4 × ({valoresServicio[index]}) = {tiempo.toFixed(1)} min
-                      </div>
-                    ))}
+                    <p className="text-sm text-purple-700 mb-2">
+                      Fórmula: S = {rangoMin} + ({rangoMax} - {rangoMin}) × U₂
+                    </p>
+                    {resultados.U2 ? (
+                      resultados.U2.map((u, i) => (
+                        <div key={i} className="text-sm text-purple-600 mb-1">
+                          Cliente {i + 1}: S = {rangoMin} + ({rangoMax} - {rangoMin}) × ({u}) ={" "}
+                          {Number(resultados.tiemposServicioRaw[i].toFixed(1))} min
+                        </div>
+                      ))
+                    ) : (
+                      resultados.tiemposServicioRaw.map((s, i) => (
+                        <div key={i} className="text-sm text-purple-600 mb-1">
+                          Cliente {i + 1}: S fijo = {Number(s.toFixed(1))} min
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Tabla de Resultados */}
+            {/* Tabla */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
               <div className="flex items-center gap-3 mb-6">
                 <BarChart3 className="w-6 h-6 text-green-600" />
                 <h2 className="text-2xl font-bold text-gray-800">Tabla de Resultados</h2>
               </div>
-              
+
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
-                      <th className="p-3 text-left rounded-tl-lg">Cliente</th>
-                      <th className="p-3 text-center">Llegada (min)</th>
-                      <th className="p-3 text-center">Servicio (min)</th>
-                      <th className="p-3 text-center">Inicio Servicio</th>
-                      <th className="p-3 text-center">Fin Servicio</th>
-                      <th className="p-3 text-center rounded-tr-lg">Tiempo Espera</th>
+                      <th className="p-3">Cliente</th>
+                      {usarLlegadas && <th className="p-3 text-center">U₁</th>}
+                      <th className="p-3 text-center">T (entre llegadas)</th>
+                      <th className="p-3 text-center">Llegada</th>
+                      {usarServicios && <th className="p-3 text-center">U₂</th>}
+                      <th className="p-3 text-center">Servicio</th>
+                      <th className="p-3 text-center">Inicio</th>
+                      <th className="p-3 text-center">Fin</th>
+                      <th className="p-3 text-center">Espera</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {resultados.datosClientes.map((cliente, index) => (
-                      <tr key={index} className={`border-b hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}>
-                        <td className="p-3 font-semibold text-gray-700">{cliente.cliente}</td>
-                        <td className="p-3 text-center text-gray-600">{cliente.llegada}</td>
-                        <td className="p-3 text-center text-gray-600">{cliente.servicio}</td>
-                        <td className="p-3 text-center text-gray-600">{cliente.inicio}</td>
-                        <td className="p-3 text-center text-gray-600">{cliente.fin}</td>
+                    {resultados.datosClientes.map((c, i) => (
+                      <tr
+                        key={i}
+                        className={`border-b hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "bg-gray-50" : "bg-white"}`}
+                      >
+                        <td className="p-3 font-semibold text-gray-700">{c.cliente}</td>
+                        {usarLlegadas && <td className="p-3 text-center text-gray-600">{c.u1}</td>}
+                        <td className="p-3 text-center text-gray-600">{c.tEntre}</td>
+                        <td className="p-3 text-center text-gray-600">{c.llegada}</td>
+                        {usarServicios && <td className="p-3 text-center text-gray-600">{c.u2}</td>}
+                        <td className="p-3 text-center text-gray-600">{c.servicio}</td>
+                        <td className="p-3 text-center text-gray-600">{c.inicio}</td>
+                        <td className="p-3 text-center text-gray-600">{c.fin}</td>
                         <td className="p-3 text-center">
-                          <span className={`px-2 py-1 rounded-full text-sm font-medium ${getStatusColor(cliente.espera)}`}>
-                            {cliente.espera} min
+                          <span className={`px-2 py-1 rounded-full text-sm font-medium ${getStatusColor(c.espera)}`}>
+                            {c.espera} min
                           </span>
                         </td>
                       </tr>
@@ -346,22 +645,24 @@ const CafeteriaSimulator = () => {
                   <Clock className="w-8 h-8" />
                   <h3 className="text-lg font-semibold">Tiempo Promedio</h3>
                 </div>
-                <p className="text-3xl font-bold">{resultados.metricas.tiempoPromedioEspera.toFixed(2)}</p>
+                <p className="text-3xl font-bold">{resultados.metricas.tiempoPromedioEspera}</p>
                 <p className="text-blue-100">minutos de espera</p>
               </div>
 
-              <div className={`bg-gradient-to-br rounded-2xl p-6 text-white shadow-xl ${
-                resultados.metricas.utilizacionServidor > 80 
-                  ? 'from-red-500 to-red-600' 
-                  : resultados.metricas.utilizacionServidor > 60 
-                    ? 'from-yellow-500 to-yellow-600' 
-                    : 'from-green-500 to-green-600'
-              }`}>
+              <div
+                className={`bg-gradient-to-br rounded-2xl p-6 text-white shadow-xl ${
+                  resultados.metricas.utilizacionServidor > 80
+                    ? "from-red-500 to-red-600"
+                    : resultados.metricas.utilizacionServidor > 60
+                    ? "from-yellow-500 to-yellow-600"
+                    : "from-green-500 to-green-600"
+                }`}
+              >
                 <div className="flex items-center gap-3 mb-2">
                   <TrendingUp className="w-8 h-8" />
                   <h3 className="text-lg font-semibold">Utilización</h3>
                 </div>
-                <p className="text-3xl font-bold">{resultados.metricas.utilizacionServidor.toFixed(0)}%</p>
+                <p className="text-3xl font-bold">{resultados.metricas.utilizacionServidor}%</p>
                 <p className="opacity-90">del servidor</p>
               </div>
 
@@ -371,7 +672,7 @@ const CafeteriaSimulator = () => {
                   <h3 className="text-lg font-semibold">Sin Espera</h3>
                 </div>
                 <p className="text-3xl font-bold">{resultados.metricas.clientesSinEspera}</p>
-                <p className="text-purple-100">de 5 clientes</p>
+                <p className="text-purple-100">de {resultados.metricas.nClientes} clientes</p>
               </div>
 
               <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-2xl p-6 text-white shadow-xl">
@@ -390,39 +691,36 @@ const CafeteriaSimulator = () => {
                 <AlertCircle className="w-6 h-6 text-orange-600" />
                 <h2 className="text-2xl font-bold text-gray-800">Conclusiones del Análisis</h2>
               </div>
-              
+
               <div className="prose max-w-none">
                 <p className="text-gray-700 leading-relaxed mb-4">
-                  La simulación de la cafetería universitaria demuestra un sistema con alta variabilidad 
-                  en la atención, donde <strong>{resultados.metricas.clientesSinEspera} de 5 clientes</strong> no 
-                  esperaron mientras que <strong>{resultados.metricas.clientesConEspera}</strong> enfrentaron 
-                  esperas significativas, resultando en un tiempo de espera promedio de{' '}
-                  <strong className="text-blue-600">{resultados.metricas.tiempoPromedioEspera.toFixed(2)} minutos</strong>.
+                  La simulación muestra que <strong>{resultados.metricas.clientesSinEspera} de {resultados.metricas.nClientes} clientes</strong> no esperaron,
+                  mientras que <strong>{resultados.metricas.clientesConEspera}</strong> sí esperaron. El tiempo de espera
+                  promedio fue de <strong className="text-blue-600">{resultados.metricas.tiempoPromedioEspera} minutos</strong>.
                 </p>
-                
+
                 <p className="text-gray-700 leading-relaxed">
-                  Este comportamiento típico de sistemas de cola evidencia que el barista opera al{' '}
-                  <strong className={getUtilizacionColor(resultados.metricas.utilizacionServidor)}>
-                    {resultados.metricas.utilizacionServidor.toFixed(0)}%
-                  </strong> de su capacidad, sugiriendo{' '}
-                  {resultados.metricas.utilizacionServidor > 80 
-                    ? 'la necesidad urgente de considerar un segundo empleado durante las horas pico'
-                    : resultados.metricas.utilizacionServidor > 60
-                    ? 'un funcionamiento eficiente del sistema'
-                    : 'que existe capacidad disponible para atender más clientes'
-                  } para mejorar la experiencia del cliente y reducir la variabilidad en el servicio.
+                  La utilización del banquero resultó en <strong className={getUtilizacionColor(resultados.metricas.utilizacionServidor)}>
+                    {resultados.metricas.utilizacionServidor}%
+                  </strong> de su tiempo.
                 </p>
               </div>
             </div>
 
-            {/* Botón Reiniciar */}
-            <div className="flex justify-center">
+            {/* Botones */}
+            <div className="flex justify-center gap-4">
               <button
-                onClick={reiniciar}
-                className="bg-gradient-to-r from-gray-600 to-gray-700 text-white py-3 px-8 rounded-xl font-semibold hover:from-gray-700 hover:to-gray-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
+                onClick={() => {
+                  // volver a editar parámetros
+                  setResultados(null);
+                  setPaso(0);
+                }}
+                className="bg-gray-200 py-2 px-6 rounded-lg"
               >
-                Nueva Simulación
+                Editar parámetros
               </button>
+
+
             </div>
           </div>
         )}
@@ -431,4 +729,4 @@ const CafeteriaSimulator = () => {
   );
 };
 
-export default CafeteriaSimulator;
+export default ColasSimulador;
