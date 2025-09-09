@@ -1,4 +1,15 @@
 import React, { useState } from "react";
+import Papa from "papaparse";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import {
   Play,
   Calculator,
@@ -10,6 +21,7 @@ import {
   TrendingUp,
   CheckCircle,
   BanknoteIcon,
+  Download,
 } from "lucide-react";
 
 const ColasSimulador = () => {
@@ -248,7 +260,34 @@ const ColasSimulador = () => {
     return "text-green-600";
   };
 
-  
+  const exportarCSV = () => {
+    if (!resultados || !resultados.datosClientes) return;
+
+    const dataToExport = resultados.datosClientes.map(c => ({
+      'Cliente': c.cliente,
+      'U1': usarLlegadas ? c.u1 : 'N/A',
+      'T (entre llegadas)': c.tEntre,
+      'Llegada': c.llegada,
+      'U2': usarServicios ? c.u2 : 'N/A',
+      'Servicio': c.servicio,
+      'Inicio': c.inicio,
+      'Fin': c.fin,
+      'Espera': c.espera,
+    }));
+
+    const csv = Papa.unparse(dataToExport);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    if (link.href) {
+      URL.revokeObjectURL(link.href);
+    }
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.setAttribute("download", "resultados_simulacion.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // --- Render ---
   return (
@@ -592,9 +631,18 @@ const ColasSimulador = () => {
 
             {/* Tabla */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-              <div className="flex items-center gap-3 mb-6">
-                <BarChart3 className="w-6 h-6 text-green-600" />
-                <h2 className="text-2xl font-bold text-gray-800">Tabla de Resultados</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <BarChart3 className="w-6 h-6 text-green-600" />
+                  <h2 className="text-2xl font-bold text-gray-800">Tabla de Resultados</h2>
+                </div>
+                <button
+                  onClick={exportarCSV}
+                  className="bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-5 h-5" />
+                  Exportar a CSV
+                </button>
               </div>
 
               <div className="overflow-x-auto">
@@ -650,8 +698,7 @@ const ColasSimulador = () => {
               </div>
 
               <div
-                className={`bg-gradient-to-br rounded-2xl p-6 text-white shadow-xl ${
-                  resultados.metricas.utilizacionServidor > 80
+                className={`bg-gradient-to-br rounded-2xl p-6 text-white shadow-xl ${resultados.metricas.utilizacionServidor > 80
                     ? "from-red-500 to-red-600"
                     : resultados.metricas.utilizacionServidor > 60
                     ? "from-yellow-500 to-yellow-600"
@@ -707,6 +754,25 @@ const ColasSimulador = () => {
               </div>
             </div>
 
+            {/* Gráfica */}
+            <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+              <div className="flex items-center gap-3 mb-6">
+                <BarChart3 className="w-6 h-6 text-blue-600" />
+                <h2 className="text-2xl font-bold text-gray-800">Tiempos de Clientes</h2>
+              </div>
+              <ResponsiveContainer width="100%" height={400}>
+                <LineChart data={resultados.datosClientes}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="cliente" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="llegada" stroke="#8884d8" name="Llegada" />
+                  <Line type="monotone" dataKey="fin" stroke="#82ca9d" name="Fin" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
             {/* Botones */}
             <div className="flex justify-center gap-4">
               <button
@@ -720,7 +786,13 @@ const ColasSimulador = () => {
                 Editar parámetros
               </button>
 
-
+              <button
+                onClick={exportarCSV}
+                className="bg-green-500 text-white py-2 px-6 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+              >
+                <Download className="w-5 h-5" />
+                Exportar a CSV
+              </button>
             </div>
           </div>
         )}
