@@ -24,6 +24,7 @@ import {
   Smile,
   Crown,
 } from "lucide-react";
+import Charts from "./Charts";
 
 const AmusementParkSimulator = () => {
   // --- Initial Configuration ---
@@ -377,6 +378,9 @@ const AmusementParkSimulator = () => {
                 <p className="text-lg">Utilización de Atracciones: <strong className="text-xl">{resultados.metricas.utilizacionServidor}%</strong></p>
               </div>
             </div>
+
+            {/* Charts */}
+            <Charts data={resultados.datosClientes} />
 
             {/* Results Table */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
